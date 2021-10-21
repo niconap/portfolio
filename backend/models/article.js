@@ -3,10 +3,15 @@ const Schema = mongoose.Schema;
 
 const ArticleSchema = new Schema({
   title: String,
-  content: [{ body: String }],
+  content: String,
   date: { type: Date, default: Date.now },
   public: Boolean,
-  Author: { type: Schema.Types.ObjectId, ref: 'User' },
+  user: {
+    firstname: String,
+    lastname: String,
+    username: String,
+    id: String,
+  },
 });
 
 module.exports = mongoose.model('Article', ArticleSchema);
