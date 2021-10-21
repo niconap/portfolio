@@ -6,11 +6,7 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
-
-/* GET home page. */
-router.get('/', function (req, res, next) {
-  res.json({ message: 'Homepage' });
-});
+const Article = require('../models/article');
 
 router.post('/auth/login', (req, res, next) => {
   passport.authenticate('local', { session: false }, (err, user, info) => {
@@ -88,5 +84,117 @@ router.post('/auth/register', [
     });
   },
 ]);
+
+router.get('/article/:id', function (req, res, next) {
+  async.parallel(
+    {
+      article: function (callback) {
+        Article.findById(req.params.id).populate('user').exec(callback);
+      },
+    },
+    function (err, results) {
+      if (err) return next(err);
+      if (results.article == null) {
+        res.json({
+          error: 404,
+          message: `Article with id ${req.params.id} not found`,
+        });
+        return;
+      }
+      res.json({
+        article: results.article,
+      });
+    }
+  );
+});
+
+router.post('/article', verifyToken, [
+  (req, res, next) => {
+    jwt.verify(req.token, process.env.PASSPORT_SECRET, (err, authData) => {
+      if (err) {
+        console.log(err);
+        res.sendStatus(403);
+      } else {
+        req.authData = authData;
+        next();
+      }
+    });
+  },
+
+  body(
+    'title',
+    'Title must be longer than 3 characters and shorter than 100 characters.'
+  )
+    .isLength({ min: 3, max: 100 })
+    .trim()
+    .escape(),
+  body(
+    'content',
+    'Content must be longer than 10 characters and shorter than 300 characters.'
+  )
+    .trim()
+    .escape(),
+  body('public', 'Public must be a Boolean (true or false).')
+    .trim()
+    .isBoolean(),
+
+  (req, res, next) => {
+    const errors = validationResult(req);
+
+    var article = new Article({
+      title: req.body.title,
+      content: req.body.content,
+      user: {
+        firstname: req.authData.firstname,
+        lastname: req.authData.lastname,
+        username: req.authData.username,
+        id: req.authData._id,
+      },
+      date: new Date(),
+      public: req.body.public,
+    });
+
+    if (!errors.isEmpty()) {
+      res.json({
+        errors: errors.array(),
+      });
+      return;
+    } else {
+      article.save(function (err) {
+        if (err) return next(err);
+        res.json({
+          message: 'Article successfully added!',
+          article,
+        });
+      });
+    }
+  },
+]);
+
+router.get('/currentuser', verifyToken, function (req, res, next) {
+  jwt.verify(req.token, 'secret', (err, authData) => {
+    if (err) {
+      res.json({
+        error: 403,
+        message:
+          'You are not logged in or you do not have permission to access this information or route.',
+      });
+      return;
+    }
+    res.json({
+      authData,
+    });
+  });
+});
+
+function verifyToken(req, res, next) {
+  const bearer = req.headers['authorization'];
+  if (typeof bearer !== 'undefined') {
+    req.token = bearer;
+    next();
+  } else {
+    res.sendStatus(403);
+  }
+}
 
 module.exports = router;
