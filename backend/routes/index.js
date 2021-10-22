@@ -171,7 +171,102 @@ router.post('/article', verifyToken, [
   },
 ]);
 
-router.get('/currentuser', verifyToken, function (req, res, next) {
+router.put('/article/:id', verifyToken, [
+  (req, res, next) => {
+    jwt.verify(req.token, process.env.PASSPORT_SECRET, (err, authData) => {
+      if (err) {
+        console.log(err);
+        res.sendStatus(403);
+      } else {
+        req.authData = authData;
+        next();
+      }
+    });
+  },
+
+  body(
+    'title',
+    'Title must be longer than 3 characters and shorter than 100 characters.'
+  )
+    .isLength({ min: 3, max: 100 })
+    .trim()
+    .escape(),
+  body(
+    'content',
+    'Content must be longer than 10 characters and shorter than 300 characters.'
+  )
+    .trim()
+    .escape(),
+  body('public', 'Public must be a Boolean (true or false).')
+    .trim()
+    .isBoolean(),
+
+  (req, res, next) => {
+    const errors = validationResult(req);
+
+    if (!errors.isEmpty()) {
+      res.json({
+        errors: errors.array(),
+      });
+      return;
+    } else {
+      async.parallel(
+        {
+          article: function (callback) {
+            Article.findById(req.params.id).populate('user').exec(callback);
+          },
+        },
+        function (err, results) {
+          if (err) return next(err);
+          if (results.article == null) {
+            res.json({
+              error: 404,
+              message: `Article with id ${req.params.id} not found.`,
+            });
+            return;
+          }
+          if (results.article.user.username !== req.authData.username) {
+            res.sendStatus(403);
+            return;
+          }
+
+          var article = new Article({
+            title: req.body.title,
+            content: req.body.content,
+            user: {
+              firstname: req.authData.firstname,
+              lastname: req.authData.lastname,
+              username: req.authData.username,
+              id: req.authData._id,
+            },
+            date: new Date(),
+            public: req.body.public,
+            _id: results.article._id,
+          });
+
+          Article.findByIdAndUpdate(
+            req.params.id,
+            article,
+            { new: true },
+            function (err, newArticle) {
+              if (err) return next(err);
+              res.json({
+                message: 'Article successfully updated!',
+                article: newArticle,
+              });
+            }
+          );
+        }
+      );
+    }
+  },
+]);
+
+router.delete('/article/:id', function(req, res, next) => {
+  
+})
+
+router.get('/auth/session', verifyToken, function (req, res, next) {
   jwt.verify(req.token, 'secret', (err, authData) => {
     if (err) {
       res.json({
