@@ -85,6 +85,58 @@ router.post('/auth/register', [
   },
 ]);
 
+router.delete('/user/:id', verifyToken, (req, res, next) => {
+  jwt.verify(req.token, process.env.PASSPORT_SECRET, (err, authData) => {
+    if (err) {
+      res.sendStatus(403);
+      return;
+    }
+    async.parallel(
+      {
+        user: function (callback) {
+          User.findById(req.params.id).exec(callback);
+        },
+        articles: function (callback) {
+          Article.find({ 'user.id': req.params.id }).exec(callback);
+        },
+      },
+      function (err, results) {
+        if (err) return next(err);
+        if (results.articles.length > 0) {
+          console.log(results.articles);
+          res.json({
+            message:
+              'Please delete all of the articles by this user before deleting the user.',
+          });
+          return;
+        }
+        if (results.user == null) {
+          res.json({
+            error: 404,
+            message: `User with id ${req.params.id} not found.`,
+          });
+          return;
+        }
+        if (authData.username != results.user.username) {
+          res.json({
+            error: 403,
+            message: 'You do not have permission to delete this user.',
+          });
+          return;
+        }
+        User.findByIdAndRemove(results.user._id, function (err, deletedUser) {
+          if (err) return next(err);
+          res.json({
+            message: 'User successfully removed!',
+            user: deletedUser,
+          });
+        });
+        return;
+      }
+    );
+  });
+});
+
 router.get('/article/:id', function (req, res, next) {
   async.parallel(
     {
@@ -298,8 +350,9 @@ router.delete('/article/:id', verifyToken, function (req, res, next) {
 });
 
 router.get('/auth/session', verifyToken, function (req, res, next) {
-  jwt.verify(req.token, 'secret', (err, authData) => {
+  jwt.verify(req.token, process.env.PASSPORT_SECRET, (err, authData) => {
     if (err) {
+      console.log(err);
       res.json({
         error: 403,
         message:
