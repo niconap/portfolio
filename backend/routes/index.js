@@ -137,6 +137,89 @@ router.delete('/user/:id', verifyToken, (req, res, next) => {
   });
 });
 
+router.put('/user/:id', verifyToken, [
+  (req, res, next) => {
+    jwt.verify(
+      req.token,
+      process.env.PASSPORT_SECRET,
+      function (err, authData) {
+        if (err) {
+          res.sendStatus(403);
+        } else {
+          req.authData = authData;
+          next();
+        }
+      }
+    );
+  },
+
+  body('firstname', 'First name must be longer than 3 characters.')
+    .trim()
+    .isLength({ min: 3 })
+    .escape(),
+  body('lastname', 'Last name must be longer than 3 characters.')
+    .trim()
+    .isLength({ min: 3 })
+    .escape(),
+  body('password', 'Password must be longer than 3 characters.')
+    .trim()
+    .isLength({ min: 8 })
+    .escape(),
+  body('code', 'Code is incorrect.').trim().equals(process.env.CODE),
+
+  (req, res, next) => {
+    async.parallel(
+      {
+        user: function (callback) {
+          User.findById(req.params.id).exec(callback);
+        },
+      },
+      function (err, results) {
+        if (err) return next(err);
+        if (results.user.username != req.authData.username) {
+          res.sendStatus(403);
+          return;
+        }
+        const errors = validationResult(req);
+        if (results.user == null) {
+          res.json({
+            error: 404,
+            message: 'User not found',
+          });
+          return;
+        }
+        if (!errors.isEmpty()) {
+          res.json({ errors: errors.array() });
+          return;
+        } else {
+          bcrypt.hash(req.body.password, 10, (err, hashedPassword) => {
+            if (err) return next(err);
+            var user = new User({
+              firstname: req.body.firstname,
+              lastname: req.body.lastname,
+              username: results.user.username,
+              password: hashedPassword,
+              _id: req.params.id,
+            });
+            User.findByIdAndUpdate(
+              req.params.id,
+              user,
+              { new: true },
+              function (err, updatedUser) {
+                if (err) return next(err);
+                res.json({
+                  message: 'User succesfully updated!',
+                  user: updatedUser,
+                });
+              }
+            );
+          });
+        }
+      }
+    );
+  },
+]);
+
 router.get('/article/:id', function (req, res, next) {
   async.parallel(
     {
