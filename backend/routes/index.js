@@ -262,9 +262,40 @@ router.put('/article/:id', verifyToken, [
   },
 ]);
 
-router.delete('/article/:id', function(req, res, next) => {
-  
-})
+router.delete('/article/:id', verifyToken, function (req, res, next) {
+  jwt.verify(req.token, process.env.PASSPORT_SECRET, (err, authData) => {
+    if (err) {
+      res.sendStatus(403);
+    }
+    async.parallel(
+      {
+        article: function (callback) {
+          Article.findById(req.params.id).exec(callback);
+        },
+      },
+      function (err, results) {
+        if (err) return next(err);
+        if (results.article == null) {
+          res.json({
+            error: 404,
+            message: `Article with id ${req.params.id} not found.`,
+          });
+        } else if (results.article.user.username == authData.username) {
+          Article.findByIdAndRemove(results.article._id, function (err) {
+            if (err) return next(err);
+            res.json({
+              message: 'Article successfully deleted!',
+              article: results.article,
+            });
+          });
+        } else {
+          res.sendStatus(403);
+          return;
+        }
+      }
+    );
+  });
+});
 
 router.get('/auth/session', verifyToken, function (req, res, next) {
   jwt.verify(req.token, 'secret', (err, authData) => {
