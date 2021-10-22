@@ -68,7 +68,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(session({ secret: process.env.PASSPORT_SECRET }));
+app.use(
+  session({
+    secret: process.env.PASSPORT_SECRET,
+    saveUninitialized: true,
+    resave: true,
+  })
+);
 app.use(passport.initialize());
 app.use(passport.session());
 
